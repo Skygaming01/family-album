@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Family Album</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=Cormorant+Garamond:wght@500;600&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="family-album.css" />
+</head>
+<body>
+
+<div class="orb orb1"></div>
+<div class="orb orb2"></div>
+<div class="orb orb3"></div>
+
+<header class="app-header">
+  <div class="logo">
+    <div class="logo-icon">📸</div>
+    <span class="logo-text">Family Album</span>
+  </div>
+  <span class="header-pill">Saved on your device</span>
+</header>
+
+<!-- HOME -->
+<div class="page active" id="homePage">
+  <p class="section-label" style="margin-top:1rem;">Family Members</p>
+  <div class="members-grid" id="membersGrid"></div>
+</div>
+
+<!-- GALLERY -->
+<div class="page" id="galleryPage">
+  <div class="back-row"><button class="back-btn" onclick="goHome()">← Back</button></div>
+  <div class="gallery-hero">
+    <div class="hero-avatar" id="heroAvatar"></div>
+    <div class="hero-info">
+      <h2 id="heroName"></h2>
+      <p id="heroRel"></p>
+      <p class="hero-count" id="heroCount"></p>
+    </div>
+  </div>
+  <div class="photos-grid" id="photosGrid"></div>
+</div>
+
+<!-- ADD MEMBER OVERLAY -->
+<div class="overlay" id="addOverlay">
+  <div class="modal">
+    <h3>Add Family Member</h3>
+    <div class="form-field">
+      <label>Name</label>
+      <input type="text" id="inputName" placeholder="e.g. Priya Didi" />
+    </div>
+    <div class="form-field">
+      <label>Relation</label>
+      <input type="text" id="inputRel" placeholder="e.g. Bhabhi, Chacha, Didi…" />
+    </div>
+    <div class="form-field">
+      <label>Colour</label>
+      <div class="color-row" id="colorRow"></div>
+    </div>
+    <div class="modal-btns">
+      <button class="btn btn-ghost" onclick="closeAddModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="saveNewMember()">Add Member</button>
+    </div>
+  </div>
+</div>
+
+<!-- LIGHTBOX -->
+<div class="lightbox" id="lightbox">
+  <img id="lbImg" src="" alt="Photo" />
+  <div class="lightbox-btns">
+    <button class="lb-btn lb-close" onclick="closeLightbox()">✕ Close</button>
+    <button class="lb-btn lb-download" onclick="downloadPhoto()">⬇ Download</button>
+    <button class="lb-btn lb-delete" onclick="deletePhoto()">🗑 Delete</button>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+<input type="file" id="fileInput" accept="image/*" onchange="handleUpload(event)" />
+
+<script>
+const PALETTE = [
+  { bg:'rgba(167,139,250,0.28)', text:'#e0d4ff', dot:'#a78bfa' },
+  { bg:'rgba(129,140,248,0.28)', text:'#d4d8ff', dot:'#818cf8' },
+  { bg:'rgba(52,211,153,0.24)',  text:'#bbf7d0', dot:'#34d399' },
+  { bg:'rgba(251,146,60,0.24)',  text:'#fed7aa', dot:'#fb923c' },
+  { bg:'rgba(248,113,113,0.24)', text:'#fecaca', dot:'#f87171' },
+  { bg:'rgba(236,72,153,0.24)',  text:'#fbcfe8', dot:'#ec4899' },
+  { bg:'rgba(250,204,21,0.24)',  text:'#fef08a', dot:'#facc15' },
+  { bg:'rgba(34,211,238,0.24)',  text:'#a5f3fc', dot:'#22d3ee' },
+];
+
+const STORAGE_KEY = 'familyAlbum_v3';
+let state = { members:[], nextId:1 };
+let currentMemberId=null, currentSlot=null, lightboxSlot=null, selectedColorIdx=0;
+
+function loadState() {
+  try { const r=localStorage.getItem(STORAGE_KEY); if(r) state=JSON.parse(r); } catch(e){}
+  if (!state.members.length) {
+    state.members = [
+      {id:1,name:'Mamu', relation:'Mama ji', colorIdx:0,photos:Array(9).fill(null)},
+      {id:2,name:'Mami', relation:'Mami ji', colorIdx:4,photos:Array(9).fill(null)},
+      {id:3,name:'Rahul',relation:'Cousin',  colorIdx:2,photos:Array(9).fill(null)},
+      {id:4,name:'Priya',relation:'Cousin',  colorIdx:5,photos:Array(9).fill(null)},
+    ];
+    state.nextId=5; saveState();
+  }
+}
+function saveState() {
+  try { localStorage.setItem(STORAGE_KEY,JSON.stringify(state)); } catch(e) { showToast('Storage full — remove some photos'); }
+}
+function initials(n) { return n.trim().split(/\s+/).map(w=>w[0]).join('').toUpperCase().slice(0,2); }
+
+function renderHome() {
+  const grid=document.getElementById('membersGrid');
+  let html='';
+  state.members.forEach(m=>{
+    const c=PALETTE[m.colorIdx]||PALETTE[0];
+    const cnt=(m.photos||[]).filter(Boolean).length;
+    const fp=(m.photos||[]).find(Boolean);
+    const av=fp?`<img src="${fp}" alt="${m.name}"/>`:`${initials(m.name)}`;
+    html+=`<div class="member-card" onclick="openGallery(${m.id})">
+      <button class="delete-btn" onclick="event.stopPropagation();deleteMember(${m.id})">✕</button>
+      <div class="avatar" style="background:${c.bg};color:${c.text};">${av}</div>
+      <div class="member-name">${m.name}</div>
+      <div class="member-rel">${m.relation}</div>
+      <div class="member-count">${cnt} photo${cnt!==1?'s':''}</div>
+    </div>`;
+  });
+  html+=`<div class="add-card" onclick="openAddModal()"><span class="add-icon">＋</span><span>Add Member</span></div>`;
+  grid.innerHTML=html;
+}
+
+function openGallery(id) {
+  currentMemberId=id;
+  const m=state.members.find(x=>x.id===id); if(!m) return;
+  const c=PALETTE[m.colorIdx]||PALETTE[0];
+  const fp=(m.photos||[]).find(Boolean);
+  const ha=document.getElementById('heroAvatar');
+  ha.style.background=c.bg; ha.style.color=c.text;
+  ha.innerHTML=fp?`<img src="${fp}" alt="${m.name}"/>`:initials(m.name);
+  document.getElementById('heroName').textContent=m.name;
+  document.getElementById('heroRel').textContent=m.relation;
+  const cnt=(m.photos||[]).filter(Boolean).length;
+  document.getElementById('heroCount').textContent=`${cnt} photo${cnt!==1?'s':''} saved`;
+  renderPhotos(m);
+  document.getElementById('homePage').classList.remove('active');
+  document.getElementById('galleryPage').classList.add('active');
+}
+
+function renderPhotos(m) {
+  const grid=document.getElementById('photosGrid'); let html='';
+  (m.photos||[]).forEach((p,i)=>{
+    if(p){
+      html+=`<div class="photo-tile" onclick="openLightbox(${i})">
+        <img src="${p}" alt="Photo ${i+1}"/>
+        <div class="tile-overlay">
+          <button class="tile-action" onclick="event.stopPropagation();openLightbox(${i})">🔍</button>
+          <button class="tile-action" onclick="event.stopPropagation();downloadPhotoAt(${i})">⬇</button>
+        </div>
+      </div>`;
+    } else {
+      html+=`<div class="photo-tile empty-tile" onclick="triggerUpload(${i})">
+        <span class="tile-icon">📷</span><span class="tile-label">Add Photo</span>
+      </div>`;
+    }
+  });
+  if((m.photos||[]).every(Boolean))
+    html+=`<div class="photo-tile empty-tile" onclick="addSlotAndUpload()"><span class="tile-icon">＋</span><span class="tile-label">More</span></div>`;
+  grid.innerHTML=html;
+}
+
+function goHome() {
+  currentMemberId=null;
+  document.getElementById('galleryPage').classList.remove('active');
+  document.getElementById('homePage').classList.add('active');
+  renderHome();
+}
+
+function triggerUpload(slot){ currentSlot=slot; document.getElementById('fileInput').click(); }
+function addSlotAndUpload(){
+  const m=state.members.find(x=>x.id===currentMemberId); if(!m) return;
+  m.photos.push(null); currentSlot=m.photos.length-1;
+  document.getElementById('fileInput').click();
+}
+function handleUpload(e){
+  const file=e.target.files[0]; if(!file) return;
+  const m=state.members.find(x=>x.id===currentMemberId); if(!m||currentSlot===null) return;
+  const reader=new FileReader();
+  reader.onload=ev=>{
+    m.photos[currentSlot]=ev.target.result; saveState(); renderPhotos(m);
+    const cnt=m.photos.filter(Boolean).length;
+    document.getElementById('heroCount').textContent=`${cnt} photo${cnt!==1?'s':''} saved`;
+    showToast('Photo saved ✓'); e.target.value=''; currentSlot=null;
+  };
+  reader.readAsDataURL(file);
+}
+
+function openLightbox(slot){
+  const m=state.members.find(x=>x.id===currentMemberId); if(!m||!m.photos[slot]) return;
+  lightboxSlot=slot; document.getElementById('lbImg').src=m.photos[slot];
+  document.getElementById('lightbox').classList.add('open');
+}
+function closeLightbox(){ document.getElementById('lightbox').classList.remove('open'); lightboxSlot=null; }
+function downloadPhoto(){ if(lightboxSlot!==null) downloadPhotoAt(lightboxSlot); }
+function downloadPhotoAt(slot){
+  const m=state.members.find(x=>x.id===currentMemberId); if(!m||!m.photos[slot]) return;
+  const a=document.createElement('a');
+  a.href=m.photos[slot]; a.download=`${m.name.replace(/\s+/g,'_')}_photo_${slot+1}.jpg`;
+  a.click(); showToast('Downloading…');
+}
+function deletePhoto(){
+  const m=state.members.find(x=>x.id===currentMemberId); if(!m||lightboxSlot===null) return;
+  if(!confirm('Remove this photo?')) return;
+  m.photos[lightboxSlot]=null; saveState(); closeLightbox(); renderPhotos(m); showToast('Photo removed');
+}
+
+function openAddModal(){
+  selectedColorIdx=0;
+  document.getElementById('inputName').value='';
+  document.getElementById('inputRel').value='';
+  renderColorDots();
+  document.getElementById('addOverlay').classList.add('open');
+  setTimeout(()=>document.getElementById('inputName').focus(),100);
+}
+function closeAddModal(){ document.getElementById('addOverlay').classList.remove('open'); }
+function renderColorDots(){
+  document.getElementById('colorRow').innerHTML=PALETTE.map((c,i)=>
+    `<div class="cdot${i===selectedColorIdx?' sel':''}" style="background:${c.dot};" onclick="selectedColorIdx=${i};renderColorDots()"></div>`
+  ).join('');
+}
+function saveNewMember(){
+  const name=document.getElementById('inputName').value.trim();
+  const rel=document.getElementById('inputRel').value.trim();
+  if(!name){ showToast('Please enter a name'); return; }
+  state.members.push({id:state.nextId++,name,relation:rel||'Family',colorIdx:selectedColorIdx,photos:Array(9).fill(null)});
+  saveState(); closeAddModal(); renderHome(); showToast(`${name} added!`);
+}
+function deleteMember(id){
+  const m=state.members.find(x=>x.id===id); if(!m) return;
+  if(!confirm(`Remove ${m.name} and all their photos?`)) return;
+  state.members=state.members.filter(x=>x.id!==id);
+  saveState(); renderHome(); showToast(`${m.name} removed`);
+}
+
+let toastTimer;
+function showToast(msg){
+  const el=document.getElementById('toast');
+  el.textContent=msg; el.classList.add('show');
+  clearTimeout(toastTimer); toastTimer=setTimeout(()=>el.classList.remove('show'),2500);
+}
+
+document.getElementById('lightbox').addEventListener('click',e=>{ if(e.target===e.currentTarget) closeLightbox(); });
+document.getElementById('addOverlay').addEventListener('click',e=>{ if(e.target===e.currentTarget) closeAddModal(); });
+
+loadState(); renderHome();
+</script>
+</body>
+</html>
